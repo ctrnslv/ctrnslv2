@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8' />
+    <title>Mapbox Storytelling</title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+    <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v2.0.0/mapbox-gl.js'></script>
+    <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v2.0.0/mapbox-gl.css' rel='stylesheet' />
+    <script src="https://unpkg.com/intersection-observer@0.5.1/intersection-observer.js"></script>
+    <script src="https://unpkg.com/scrollama"></script>
+    <style>
+        body {
+            margin:0;
+            padding:0;
+            font-family: sans-serif;
+        }
+        a, a:hover, a:visited {
+            color: #0071bc;
+        }
+        #map {
+            top:0;
+            height: 100vh;
+            width:100vw;
+            position: fixed;
+        }
+        #header {
+            margin: auto;
+            width: 100%;
+            position: relative;
+            z-index: 5;
+        }
+        #header h1, #header h2, #header p {
+            margin: 0;
+            padding: 2vh 2vw;
+            text-align: center;
+        }
+        #footer {
+            width: 100%;
+            min-height: 5vh;
+            padding-top: 2vh;
+            padding-bottom: 2vh;
+            text-align: center;
+            line-height: 25px;
+            font-size: 13px;
+            position: relative;
+            z-index: 5;
+        }
+        #features {
+            padding-top: 10vh;
+            padding-bottom: 10vh;
+        }
+        .hidden {
+            visibility: hidden;
+        }
+        .centered {
+            width: 50vw;
+            margin: 0 auto;
+        }
+        .lefty {
+            width: 33vw;
+            margin-left: 5vw;
+        }
+        .righty {
+            width: 33vw;
+            margin-left: 62vw;
+        }
+        .fully {
+            width: 100%;
+            margin: auto;
+        }
+        .light {
+            color: #444;
+            background-color: #fafafa;
+        }
+        .dark {
+            color: #fafafa;
+            background-color: #0a0a0a;
+        }
+        .step {
+            padding-bottom: 50vh;
+            /* margin-bottom: 10vh; */
+            opacity: 0.25;
+        }
+        .step.active {
+            opacity: 0.9;
+        }
+
+        .step div {
+            padding:  25px 50px;
+            line-height: 25px;
+            font-size: 13px;
+        }
+
+        .step img {
+            width: 100%;
+        }
+
+        @media (max-width: 750px) {
+            .centered, .lefty, .righty, .fully {
+                width: 90vw;
+                margin: 0 auto;
+            }
+        }
+
+        /* Fix issue on mobile browser where scroll breaks  */
+        .mapboxgl-canvas-container.mapboxgl-touch-zoom-rotate.mapboxgl-touch-drag-pan,
+        .mapboxgl-canvas-container.mapboxgl-touch-zoom-rotate.mapboxgl-touch-drag-pan .mapboxgl-canvas {
+            touch-action: unset;
+        }
+
+        </style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="story"></div>
+<script src="./config.js"></script>
+<script>
+var layerTypes = {
+    'fill': ['fill-opacity'],
+    'line': ['line-opacity'],
+    'circle': ['circle-opacity', 'circle-stroke-opacity'],
+    'symbol': ['icon-opacity', 'text-opacity'],
+    'raster': ['raster-opacity'],
+    'fill-extrusion': ['fill-extrusion-opacity'],
+    'heatmap': ['heatmap-opacity']
+}
+
+var alignments = {
+    'left': 'lefty',
+    'center': 'centered',
+    'right': 'righty',
+    'full': 'fully'
+}
+
+function getLayerPaintType(layer) {
+    var layerType = map.getLayer(layer).type;
+    return layerTypes[layerType];
+}
+
+function setLayerOpacity(layer) {
+    var paintProps = getLayerPaintType(layer.layer);
+    paintProps.forEach(function(prop) {
+        var options = {};
+        if (layer.duration) {
+            var transitionProp = prop + "-transition";
+            options = { "duration": layer.duration };
+            map.setPaintProperty(layer.layer, transitionProp, options);
+        }
+        map.setPaintProperty(layer.layer, prop, layer.opacity, options);
+    });
+}
+
+var story = document.getElementById('story');
+var features = document.createElement('div');
+features.setAttribute('id', 'features');
+
+var header = document.createElement('div');
+
+if (config.title) {
+    var titleText = document.createElement('h1');
+    titleText.innerText = config.title;
+    header.appendChild(titleText);
+}
+
+if (config.subtitle) {
+    var subtitleText = document.createElement('h2');
+    subtitleText.innerText = config.subtitle;
+    header.appendChild(subtitleText);
+}
+
+if (config.byline) {
+    var bylineText = document.createElement('p');
+    bylineText.innerText = config.byline;
+    header.appendChild(bylineText);
+}
+
+if (header.innerText.length > 0) {
+    header.classList.add(config.theme);
+    header.setAttribute('id', 'header');
+    story.appendChild(header);
+}
+
+config.chapters.forEach((record, idx) => {
+    var container = document.createElement('div');
+    var chapter = document.createElement('div');
+
+    if (record.title) {
+        var title = document.createElement('h3');
+        title.innerText = record.title;
+        chapter.appendChild(title);
+    }
+
+    if (record.image) {
+        var image = new Image();
+        image.src = record.image;
+        chapter.appendChild(image);
+    }
+
+    if (record.description) {
+        var story = document.createElement('p');
+        story.innerHTML = record.description;
+        chapter.appendChild(story);
+    }
+
+    container.setAttribute('id', record.id);
+    container.classList.add('step');
+    if (idx === 0) {
+        container.classList.add('active');
+    }
+
+    chapter.classList.add(config.theme);
+    container.appendChild(chapter);
+    container.classList.add(alignments[record.alignment] || 'centered');
+    if (record.hidden) {
+        container.classList.add('hidden');
+    }
+    features.appendChild(container);
+});
+
+story.appendChild(features);
+
+var footer = document.createElement('div');
+
+if (config.footer) {
+    var footerText = document.createElement('p');
+    footerText.innerHTML = config.footer;
+    footer.appendChild(footerText);
+}
+
+if (footer.innerText.length > 0) {
+    footer.classList.add(config.theme);
+    footer.setAttribute('id', 'footer');
+    story.appendChild(footer);
+}
+
+mapboxgl.accessToken = config.accessToken;
+
+const transformRequest = (url) => {
+    const hasQuery = url.indexOf("?") !== -1;
+    const suffix = hasQuery ? "&pluginName=scrollytellingV2" : "?pluginName=scrollytellingV2";
+    return {
+      url: url + suffix
+    }
+}
+
+var map = new mapboxgl.Map({
+    container: 'map',
+    style: config.style,
+    center: config.chapters[0].location.center,
+    zoom: config.chapters[0].location.zoom,
+    bearing: config.chapters[0].location.bearing,
+    pitch: config.chapters[0].location.pitch,
+    interactive: false,
+    transformRequest: transformRequest
+});
+
+if (config.showMarkers) {
+    var marker = new mapboxgl.Marker({ color: config.markerColor });
+    marker.setLngLat(config.chapters[0].location.center).addTo(map);
+}
+
+// instantiate the scrollama
+var scroller = scrollama();
+map.on("load", function() {
+    if (config.use3dTerrain) {
+        map.addSource('mapbox-dem', {
+            'type': 'raster-dem',
+            'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+            'tileSize': 512,
+            'maxzoom': 14
+        });
+        // add the DEM source as a terrain layer with exaggerated height
+        map.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
+
+        // add a sky layer that will show when the map is highly pitched
+        map.addLayer({
+            'id': 'sky',
+            'type': 'sky',
+            'paint': {
+                'sky-type': 'atmosphere',
+                'sky-atmosphere-sun': [0.0, 0.0],
+                'sky-atmosphere-sun-intensity': 15
+            }
+        });
+    };
+
+    // setup the instance, pass callback functions
+    scroller
+    .setup({
+        step: '.step',
+        offset: 0.5,
+        progress: true
+    })
+    .onStepEnter(response => {
+        var chapter = config.chapters.find(chap => chap.id === response.element.id);
+        response.element.classList.add('active');
+        map[chapter.mapAnimation || 'flyTo'](chapter.location);
+        if (config.showMarkers) {
+            marker.setLngLat(chapter.location.center);
+        }
+        if (chapter.onChapterEnter.length > 0) {
+            chapter.onChapterEnter.forEach(setLayerOpacity);
+        }
+        if (chapter.callback) {
+            window[chapter.callback]();
+        }
+        if (chapter.rotateAnimation) {
+            map.once('moveend', function() {
+                const rotateNumber = map.getBearing();
+                map.rotateTo(rotateNumber + 90, {
+                    duration: 24000, easing: function (t) {
+                        return t;
+                    }
+                });
+            });
+        }
+    })
+    .onStepExit(response => {
+        var chapter = config.chapters.find(chap => chap.id === response.element.id);
+        response.element.classList.remove('active');
+        if (chapter.onChapterExit.length > 0) {
+            chapter.onChapterExit.forEach(setLayerOpacity);
+        }
+    });
+});
+
+// setup resize event
+window.addEventListener('resize', scroller.resize);
+
+  map.on('load', function () {
+      map.addSource('places', {
+          'type': 'geojson',
+          'data': {
+              'type': 'FeatureCollection',
+              'features': [
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Bari</strong><p>Cominicia l\' inchiesta, diretta verso le terre lucane, con lentezza....</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [16.87187, 41.11715]
+                      }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Bitetto</strong><p>Nello zaino, lo stretto indispensabile e un\' ispirazione, il libro di Alliegro \"Totem Nero\".</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [16.74949, 41.04042]
+                      }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Cassano delle Murge</strong><p>Una guida incontrata lungo la Via Peuceta, da osservatore esterno, mi parla della Basilicata come di \"una terra cuscinetto, di cui non si deve parlare, dove solo i mediocri restano e regna il silenzio\".</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [16.76992, 40.88505]
+                      }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Santeramo in Colle</strong><p>Durante il cammino, ascolto la canzone composta da un cantautore per l\'inchiesta, al suon di musica avanzo nella murgia afosa</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [16.75535, 40.79241]
+                      }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              "<strong>Altamura</strong><p>Stridenti contrasti tra un cammino curato e ben segnato, e cumuli di rifiuti che marciscono accanto agli ulivi mi fanno presagire il sapore dell\'inchiesta.</p>"
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [16.55278, 40.82789]
+                      }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Gravina di Puglia</strong><p>Incontro Mimmo, sentinella lucana che mi accompagnerà nel percorso dell\'inchiesta.</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [16.42194, 40.81895]
+                      }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Pisticci-dirupo</strong><p>Incontro Nico, insegnante a scuola e sentinella, che mi racconta delle battaglie del Movimento Tutela Val Basento.</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [16.55015, 40.39003]
+                      }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              "<strong>Pisticci-studio legale</strong><p>Intervisto l\'Avvocato Di Pisa, che difende le parti civili nel processo Petrolgate.</p>"
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [16.55705, 40.390581]
+                      }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Pisticci-chiesa</strong><p>Mi presento alla comunità di Pisticci nella loro Chiesa e ascolto le loro voci e denunce.</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [16.55847,40.39042]
+                            }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Viggiano - Direttivo Eni Distretto Meridionale</strong><p>Intervisto l\' ing. Lopomo, Responsabile del Distretto Meridionale Eni, insieme al responsabile HSE del sito.</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [15.90002, 40.33698]
+                            }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Viggiano - piazza</strong><p>Mimmo racconta dei contrasti di Viggiano, terra dell\' arpa e della Madonna Nera, un\' oasi nel deserto arricchita dalle royalties</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [15.90067,40.342239]
+                            }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Viggiano - studio medico</strong><p>Un dottore sentinella, il Dottor Mele, ci racconta del perchè in Basilicata \"di petrolio si muore…\"</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [15.90501,40.33897]
+                            }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Viggiano - Santuario della Madonna Nera</strong><p>La storia del petrolio in Basilicata raccontata in un monologo.</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [15.903673,40.340554]
+                            }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Viggiano - centro Oli,Eni</strong><p>Percorriamo il perimetro del Centro Oli, dove mura colorate stridono con la realta\' estrattiva racchiusa all\'interno.</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [15.89819,40.314245]
+                            }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Lago del Pertusillo</strong><p>Seguo Mimmo sulle sponde del lago del Pertusillo e ascolto il suo racconto sulle morie di pesci.</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [15.97041, 40.28185]
+                            }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Grumento Nova - Località Campestrini</strong><p>Intervisto l\'allevatore Signor Miranda e sua madre, che mi raccontano delle conseguenze del petrolio sui loro animali.</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [15.88953, 40.30675]
+                            }
+                  },
+                  {
+                      'type': 'Feature',
+                      'properties': {
+                          'description':
+                              '<strong>Policoro - studio legale</strong><p>Intervisto l\'Avvocato Bellizzi e il Dottor Mele, due professionisti sentinella che guidano i cittadini nel dimostrare gli impatti del petrolio.</p>'
+                      },
+                      'geometry': {
+                          'type': 'Point',
+                          'coordinates': [16.55847,40.39042]
+                        },
+                        'geometry': {
+                            'type': 'Point',
+                            'coordinates': [16.66295,40.19894]
+                            }
+                    },
+                    {
+                        'type': 'Feature',
+                        'properties': {
+                            'description':
+                                '<strong>Pisticci Scalo - Tecnoparco</strong><p>Visito con Mimmo il Tecnoparco di Pisticci Scalo, una delle fonti dei tormenti degli abitanti della zona.</p>'
+                        },
+                        'geometry': {
+                            'type': 'Point',
+                            'coordinates': [16.557009,40.422888]
+                            }
+                    },
+                    {
+                        'type': 'Feature',
+                        'properties': {
+                            'description':
+                                '<strong>Pisticci Scalo - chiesa</strong><p>Mi accoglie un illuminato parroco sentinella che mi racconta dell\' impegno della sua comunità per l\' ambiente.</p>'
+                        },
+                        'geometry': {
+                            'type': 'Point',
+                            'coordinates': [16.548939,40.420474]
+                            }
+                    },
+                    {
+                        'type': 'Feature',
+                        'properties': {
+                            'description':
+                                '<strong>Corleto Perticara - Tempa Rossa, Total</strong><p>Ci avviciniamo al sito estrattivo della Total.</p>'
+                        },
+                        'geometry': {
+                            'type': 'Point',
+                            'coordinates': [16.085372,40.409225]
+                            }
+                    },
+                    {
+                        'type': 'Feature',
+                        'properties': {
+                            'description':
+                                '<strong>Corleto Perticara - bosco</strong><p>Osservo Mimmo mentre rimuove uno strumento di monitoraggio del gas flaring.</p>'
+                        },
+                        'geometry': {
+                            'type': 'Point',
+                            'coordinates': [16.074198,40.418165]
+                            }
+                    },
+                    {
+                        'type': 'Feature',
+                        'properties': {
+                            'description':
+                                '<strong>Corleto Perticara - fattoria</strong><p>Intervisto un allevatore e una allevatrice che mi raccontano di come la loro vita è cambiata con l\' avvento del petrolio.</p>'
+                        },
+                        'geometry': {
+                            'type': 'Point',
+                            'coordinates': [16.037655,40.394076]
+                            }
+                    },
+                    {
+                        'type': 'Feature',
+                        'properties': {
+                            'description':
+                                '<strong>Pietrapertosa - dolomiti lucane</strong><p>Ammiro le affascinanti dolomiti lucane che quasi mi fanno dimenticare dei tanti pozzi a pochi chilometri di distanza.</p>'
+                        },
+                        'geometry': {
+                            'type': 'Point',
+                            'coordinates': [16.059963,40.519963]
+                            }
+                    },
+                    {
+                        'type': 'Feature',
+                        'properties': {
+                            'description':
+                                '<strong>Villa D\' Agri - pozzo Eni, Contrada Vigne</strong><p>Intervisto Camilla Nigro di Libera Val d\' Agri e dell\' Osservatorio Popolare Val d\' Agri che mi dimostra perchè "in Basilicata di petrolio si tace..."</p>'
+                        },
+                        'geometry': {
+                            'type': 'Point',
+                            'coordinates': [15.945334,40.360306]
+                            }
+                    },
+                    {
+                        'type': 'Feature',
+                        'properties': {
+                            'description':
+                                '<strong>Potenza - tribunale</strong><p>Seguiamo la prima udienza del processo per disastro ambientale contro Eni, scorporato dal più ampio processo Petrolgate deciso in primo grado a marzo 2021 ; incontriamo le istanze civiche che manifestano fuori dal tribunale.</p>'
+                        },
+                        'geometry': {
+                            'type': 'Point',
+                            'coordinates': [15.805873,40.633602]
+                            }
+                    },
+                    {
+                        'type': 'Feature',
+                        'properties': {
+                            'description':
+                                '<strong>Potenza - università</strong><p>Incontro Luca Manes che mi racconta del lavoro della ONG Recommon a tutela delle comunità che fronteggiano multinazionali.</p>'
+                        },
+                        'geometry': {
+                            'type': 'Point',
+                            'coordinates': [15.80702, 40.63328]
+                            }
+                    },
+                    {
+                        'type': 'Feature',
+                        'properties': {
+                            'description':
+                                '<strong>Potenza - ARPAB</strong><p>Ammiro le affascinanti dolomiti lucane che quasi mi fanno dimenticare dei tanti pozzi a pochi chilometri di distanza.</p>'
+                        },
+                        'geometry': {
+                            'type': 'Point',
+                            'coordinates': [15.8114204,40.6303095]
+                      }
+                  }
+              ]
+          }
+      });
+      // Add a layer showing the places.
+      map.addLayer({
+          'id': 'places',
+          'type': 'circle',
+          'source': 'places',
+          'paint': {
+              'circle-color': '#31354a',
+              'circle-radius': 6,
+              'circle-stroke-width': 1,
+              'circle-stroke-color': '#ffffff'
+          }
+      });
+
+      // Create a popup, but don't add it to the map yet.
+      var popup = new mapboxgl.Popup({
+          closeButton: false,
+          closeOnClick: false
+      });
+
+      map.on('mouseenter', 'places', function (e) {
+          // Change the cursor style as a UI indicator.
+          map.getCanvas().style.cursor = 'pointer';
+
+          var coordinates = e.features[0].geometry.coordinates.slice();
+          var description = e.features[0].properties.description;
+
+          // Ensure that if the map is zoomed out such that multiple
+          // copies of the feature are visible, the popup appears
+          // over the copy being pointed to.
+          while (Math.abs(e.lngLat.lng - coordinates[0]) > 180) {
+              coordinates[0] += e.lngLat.lng > coordinates[0] ? 360 : -360;
+          }
+
+          // Populate the popup and set its coordinates
+          // based on the feature found.
+          popup.setLngLat(coordinates).setHTML(description).addTo(map);
+      });
+
+      map.on('mouseleave', 'places', function () {
+          map.getCanvas().style.cursor = '';
+          popup.remove();
+      });
+  });
+  </script>
+
+
+</body>
+</html>
